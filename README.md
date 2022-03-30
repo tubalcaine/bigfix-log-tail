@@ -1,1 +1,2 @@
 # bigfix-log-tail
+A CLI tool, written in Go, which will tail the BigFix agent logs indefinitely. It uses goroutines to write the lines and to find and read the newest file in the client log directory. It assumes the default location for the logs based on the OS, and allows a folder name to be specified on the command line to override it. It will always follow the most recent file in the specified directory.

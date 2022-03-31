@@ -41,6 +41,8 @@ func main() {
 		logpath = "C:\\Program Files (x86)\\BigFix Enterprise\\BES Client\\__BESData\\__Global\\Logs"
 	}
 
+	fmt.Println("OS Args ", os.Args)
+
 	fmt.Println(logpath)
 
 	msg_ch := make(chan *string)

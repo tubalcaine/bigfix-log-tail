@@ -1,11 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/hpcloud/tail"
 )
 
 func PrintStdout(msgin chan *string) {
@@ -56,32 +57,35 @@ func MostRecentFileLines(path string, msgout chan *string) {
 
 	finm := mostRecentFilename(path)
 
-	f, err := os.Open(finm)
+	tailfile, err := tail.TailFile(finm, tail.Config{Follow: true})
 
 	if err != nil {
 		panic(err)
 	}
 
-	sc := bufio.NewScanner(f)
+	tf := tailfile.Lines
 
 	for {
-		if sc.Scan() {
-			// There is data; scan it and send it to the channel
-			msg := sc.Text()
-			msgout <- &msg
-		} else {
-			// There isn't data available; see if we have a new file
+		select {
+		case msg := <-tf:
+			ltext := msg.Text
+			msgout <- &ltext
+
+		default:
+			time.Sleep(100 * time.Microsecond)
 			newname := mostRecentFilename(path)
+
 			if newname != finm {
 				fmt.Println("SWITCHING FROM", finm, "TO", newname)
 				finm = newname
-				f, err = os.Open(finm)
+
+				tailfile, err = tail.TailFile(finm, tail.Config{Follow: true})
 
 				if err != nil {
 					panic(err)
 				}
 
-				sc = bufio.NewScanner(f)
+				tf = tailfile.Lines
 			}
 		}
 	}

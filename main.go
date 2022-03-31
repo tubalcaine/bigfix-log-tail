@@ -48,6 +48,9 @@ func mostRecentFilename(path string) string {
 	}
 
 	retval := path + string(os.PathSeparator) + mostRecentName
+
+	// Lighten the CPU load!
+	time.Sleep(50 * time.Millisecond)
 	return retval
 }
 

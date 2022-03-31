@@ -46,7 +46,9 @@ func mostRecentFilename(path string) string {
 		}
 	}
 
-	return path + string(os.PathSeparator) + mostRecentName
+	retval := path + string(os.PathSeparator) + mostRecentName
+	fmt.Println(retval)
+	return retval
 }
 
 func MostRecentFileLines(path string, msgout chan *string) {

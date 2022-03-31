@@ -3,7 +3,32 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 )
+
+func PrintStdout(msgin chan *string) {
+	fmt.Println("Entering PrintStdout")
+	msg := <-msgin
+
+	for msg != nil {
+		fmt.Println(*msg)
+		msg = <-msgin
+		if msg == nil {
+			break
+		}
+	}
+
+	fmt.Println("Exiting PrintStdOut")
+}
+
+func MostRecentFileLines(path string, msgout chan *string) {
+	fmt.Println("Entering MostRecentFileLines")
+	for i := 0; i < 30; i++ {
+		msg := ("Message line " + strconv.Itoa(i))
+		msgout <- &msg
+	}
+}
 
 func main() {
 	logpath := ""
@@ -16,4 +41,18 @@ func main() {
 	}
 
 	fmt.Println(logpath)
+
+	msg_ch := make(chan *string)
+
+	go PrintStdout(msg_ch)
+	go MostRecentFileLines("NothingYet", msg_ch)
+
+	time.Sleep(10 * time.Second)
+
+	// "Close" the writer
+	msg_ch <- nil
+
+	time.Sleep(1 * time.Second)
+
+	fmt.Println("Main exits")
 }

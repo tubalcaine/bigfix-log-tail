@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
 	"time"
 )
@@ -47,12 +48,16 @@ func main() {
 	go PrintStdout(msg_ch)
 	go MostRecentFileLines("NothingYet", msg_ch)
 
-	time.Sleep(10 * time.Second)
+	// Wait for an interrupt signal
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	s := <-c
 
 	// "Close" the writer
 	msg_ch <- nil
 
 	time.Sleep(1 * time.Second)
 
-	fmt.Println("Main exits")
+	fmt.Println("Main exits with signal ", s)
 }

@@ -48,7 +48,6 @@ func mostRecentFilename(path string) string {
 	}
 
 	retval := path + string(os.PathSeparator) + mostRecentName
-	fmt.Println(retval)
 	return retval
 }
 

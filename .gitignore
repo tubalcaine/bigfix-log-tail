@@ -15,4 +15,3 @@
 # vendor/
 bigfix-log-tail
 .vscode/launch.json
-go.sum

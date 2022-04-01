@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/hpcloud/tail"
+	"github.com/nxadm/tail"
 )
 
 func PrintStdout(msgin chan *string) {

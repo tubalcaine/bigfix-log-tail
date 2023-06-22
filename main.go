@@ -1,97 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"os"
-	"os/signal"
-	"time"
+	"strings"
 
-	"github.com/nxadm/tail"
+	"github.com/fsnotify/fsnotify"
+	"github.com/hpcloud/tail"
+	"github.com/schollz/seeker"
 )
-
-func PrintStdout(msgin chan *string) {
-	fmt.Println("Entering PrintStdout")
-	msg := <-msgin
-
-	for msg != nil {
-		fmt.Println(*msg)
-		msg = <-msgin
-		if msg == nil {
-			break
-		}
-	}
-
-	fmt.Println("Exiting PrintStdOut")
-}
-
-func mostRecentFilename(path string) string {
-	ls, err := os.ReadDir(path)
-
-	if err != nil {
-		panic(err)
-	}
-
-	mostRecentName := ""
-	mostRecentTimestamp := int64(0)
-
-	for _, file := range ls {
-		info, err := file.Info()
-
-		if err != nil {
-			panic(err)
-		}
-
-		if info.ModTime().Unix() > mostRecentTimestamp {
-			mostRecentName = file.Name()
-			mostRecentTimestamp = info.ModTime().Unix()
-		}
-	}
-
-	retval := path + string(os.PathSeparator) + mostRecentName
-
-	// Lighten the CPU load!
-	time.Sleep(50 * time.Millisecond)
-	return retval
-}
-
-func MostRecentFileLines(path string, msgout chan *string) {
-	fmt.Println("Entering MostRecentFileLines")
-
-	finm := mostRecentFilename(path)
-
-	tailfile, err := tail.TailFile(finm, tail.Config{Follow: true})
-
-	if err != nil {
-		panic(err)
-	}
-
-	tf := tailfile.Lines
-
-	for {
-		select {
-		case msg := <-tf:
-			ltext := msg.Text
-			msgout <- &ltext
-
-		default:
-			time.Sleep(100 * time.Microsecond)
-			newname := mostRecentFilename(path)
-
-			if newname != finm {
-				fmt.Println("SWITCHING FROM", finm, "TO", newname)
-				finm = newname
-
-				tailfile, err = tail.TailFile(finm, tail.Config{Follow: true})
-
-				if err != nil {
-					panic(err)
-				}
-
-				tf = tailfile.Lines
-			}
-		}
-	}
-}
 
 func main() {
 	logpath := ""
@@ -108,23 +28,106 @@ func main() {
 		logpath = args[1]
 	}
 
-	fmt.Println(logpath)
+	info, err := os.Stat(logpath)
 
-	msg_ch := make(chan *string)
+	if err != nil {
+		fmt.Printf("Error opening directory [%s]. Does it exist?", logpath)
+	}
 
-	go PrintStdout(msg_ch)
-	go MostRecentFileLines(logpath, msg_ch)
+	fmt.Println("Tailing current log in", logpath)
+	tailLatestFile(logpath)
+}
 
-	// Wait for an interrupt signal
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+func tailLatestFile(dir string) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	s := <-c
+	defer watcher.Close()
 
-	// "Close" the writer
-	msg_ch <- nil
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					file := getLatestFile(dir)
+					if file != "" {
+						go tailFile(file)
+					}
+				}
+			case err := <-watcher.Errors:
+				log.Println("error:", err)
+			}
+		}
+	}()
 
-	time.Sleep(1 * time.Second)
+	err = watcher.Add(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	<-done
+}
 
-	fmt.Println("Main exits with signal ", s)
+func getLatestFile(dir string) string {
+	// existing logic...
+}
+
+func tailFile(file string) {
+	// Print the last 10 lines before tailing
+	printLastNLines(file, 10)
+
+	t, err := tail.TailFile(file, tail.Config{Follow: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for line := range t.Lines {
+		fmt.Println(line.Text)
+	}
+}
+
+func printLastNLines(file string, n int) {
+	f, err := os.Open(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	s := seeker.New(f)
+	r := bufio.NewReader(s)
+
+	var lines []string
+
+	// Seek to the end of the file
+	_, err = s.Seek(0, io.SeekEnd)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil && line == "" {
+			break
+		}
+		line = strings.TrimRight(line, "\n")
+		lines = append([]string{line}, lines...)
+
+		if len(lines) > n {
+			lines = lines[:n]
+		}
+
+		_, err = s.Seek(-2*int64(len(line)+1), io.SeekCurrent)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	for _, line := range lines {
+		fmt.Println(line)
+	}
 }

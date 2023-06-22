@@ -28,7 +28,7 @@ func main() {
 		logpath = args[1]
 	}
 
-	info, err := os.Stat(logpath)
+	_, err := os.Stat(logpath)
 
 	if err != nil {
 		fmt.Printf("Error opening directory [%s]. Does it exist?", logpath)

@@ -3,14 +3,14 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
 	"os"
-	"strings"
+	"path/filepath"
+	"sort"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/hpcloud/tail"
-	"github.com/schollz/seeker"
+	"github.com/nxadm/tail"
 )
 
 func main() {
@@ -36,6 +36,25 @@ func main() {
 
 	fmt.Println("Tailing current log in", logpath)
 	tailLatestFile(logpath)
+}
+
+func getLatestFile(dir string) string {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModTime().After(files[j].ModTime())
+	})
+
+	for _, file := range files {
+		if !file.IsDir() {
+			return filepath.Join(dir, file.Name())
+		}
+	}
+
+	return ""
 }
 
 func tailLatestFile(dir string) {
@@ -69,11 +88,6 @@ func tailLatestFile(dir string) {
 	}
 	<-done
 }
-
-func getLatestFile(dir string) string {
-	// existing logic...
-}
-
 func tailFile(file string) {
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
@@ -86,6 +100,7 @@ func tailFile(file string) {
 	for line := range t.Lines {
 		fmt.Println(line.Text)
 	}
+
 }
 
 func printLastNLines(file string, n int) {
@@ -95,36 +110,19 @@ func printLastNLines(file string, n int) {
 	}
 	defer f.Close()
 
-	s := seeker.New(f)
-	r := bufio.NewReader(s)
+	scanner := bufio.NewScanner(f)
 
 	var lines []string
 
-	// Seek to the end of the file
-	_, err = s.Seek(0, io.SeekEnd)
-	if err != nil {
-		log.Fatal(err)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+		if len(lines) > n {
+			lines = lines[1:]
+		}
 	}
 
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil && line == "" {
-			break
-		}
-		line = strings.TrimRight(line, "\n")
-		lines = append([]string{line}, lines...)
-
-		if len(lines) > n {
-			lines = lines[:n]
-		}
-
-		_, err = s.Seek(-2*int64(len(line)+1), io.SeekCurrent)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
+	if scanner.Err() != nil {
+		log.Fatal(scanner.Err())
 	}
 
 	for _, line := range lines {

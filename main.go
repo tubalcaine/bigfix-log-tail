@@ -13,6 +13,10 @@ import (
 	"github.com/nxadm/tail"
 )
 
+// A package level reference to the current
+// tail file in order to close it on starting next one
+var curTail *tail.Tail = nil
+
 func main() {
 	logpath := ""
 
@@ -103,6 +107,11 @@ func tailFile(file string) {
 	t, err := tail.TailFile(file, tail.Config{Follow: true})
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if curTail != nil {
+		curTail.Cleanup()
+		curTail = t
 	}
 
 	for line := range t.Lines {

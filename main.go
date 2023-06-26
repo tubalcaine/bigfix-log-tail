@@ -38,6 +38,45 @@ func main() {
 	tailLatestFile(logpath)
 }
 
+func tailLatestFile(dir string) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer watcher.Close()
+
+	// Get the latest file in directory and tail it initially
+	file := getLatestFile(dir)
+	if file != "" {
+		go tailFile(file)
+	}
+
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				// Check if event was a create event
+				if event.Op&fsnotify.Create == fsnotify.Create {
+					file := event.Name
+					if file != "" {
+						go tailFile(file)
+					}
+				}
+			case err := <-watcher.Errors:
+				log.Println("error:", err)
+			}
+		}
+	}()
+
+	err = watcher.Add(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	<-done
+}
+
 func getLatestFile(dir string) string {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -57,37 +96,6 @@ func getLatestFile(dir string) string {
 	return ""
 }
 
-func tailLatestFile(dir string) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer watcher.Close()
-
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			case event := <-watcher.Events:
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					file := getLatestFile(dir)
-					if file != "" {
-						go tailFile(file)
-					}
-				}
-			case err := <-watcher.Errors:
-				log.Println("error:", err)
-			}
-		}
-	}()
-
-	err = watcher.Add(dir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	<-done
-}
 func tailFile(file string) {
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
@@ -100,7 +108,6 @@ func tailFile(file string) {
 	for line := range t.Lines {
 		fmt.Println(line.Text)
 	}
-
 }
 
 func printLastNLines(file string, n int) {

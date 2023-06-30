@@ -114,8 +114,9 @@ func getLatestFile(dir string) string {
 func tailFile(file string, terminate chan bool) {
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
+	seekInfo := tail.SeekInfo{Offset: 0, Whence: -1}
 
-	t, err := tail.TailFile(file, tail.Config{Follow: true, ReOpen: true, Location: &tail.SeekInfo{Offset: 0, Whence: -1}})
+	t, err := tail.TailFile(file, tail.Config{Follow: true, ReOpen: true, Location: &seekInfo})
 	if err != nil {
 		log.Fatal(err)
 	}

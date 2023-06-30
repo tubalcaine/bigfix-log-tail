@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -114,7 +115,7 @@ func getLatestFile(dir string) string {
 func tailFile(file string, terminate chan bool) {
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
-	seekInfo := tail.SeekInfo{Offset: 0, Whence: -1}
+	seekInfo := tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
 
 	t, err := tail.TailFile(file, tail.Config{Follow: true, ReOpen: true, Location: &seekInfo})
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/nxadm/tail"
@@ -119,16 +120,18 @@ func tailFile(file string, terminate chan bool) {
 		log.Fatal(err)
 	}
 
-tailLoop:
-	for line := range t.Lines {
+tLoop:
+	for {
 		select {
 		case term := <-terminate:
 			if term {
 				t.Cleanup()
-				break tailLoop
+				break tLoop
 			}
-		default:
+		case line := <-t.Lines:
 			fmt.Println(line.Text)
+		default:
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }

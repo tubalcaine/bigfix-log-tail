@@ -117,7 +117,7 @@ func tailFile(file string, terminate chan bool) {
 	printLastNLines(file, 10)
 	seekInfo := tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
 
-	t, err := tail.TailFile(file, tail.Config{Follow: true, ReOpen: true, Location: &seekInfo})
+	t, err := tail.TailFile(file, tail.Config{Follow: true, Location: &seekInfo})
 	if err != nil {
 		log.Fatal(err)
 	}

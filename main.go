@@ -133,7 +133,8 @@ tLoop:
 		case line := <-t.Lines:
 			fmt.Println(line.Text)
 		default:
-			time.Sleep(50 * time.Millisecond)
+			// This is just here to keep this from eating too much CPU
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }

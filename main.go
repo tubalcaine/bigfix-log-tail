@@ -14,8 +14,8 @@ import (
 )
 
 // A package level reference to the current
-// tail file in order to close it on starting next one
-var curTail *tail.Tail = nil
+// tail goroutine in order to close it on starting next one
+var curTailChan chan bool = nil
 
 func main() {
 	logpath := ""
@@ -53,7 +53,12 @@ func tailLatestFile(dir string) {
 	// Get the latest file in directory and tail it initially
 	file := getLatestFile(dir)
 	if file != "" {
-		go tailFile(file)
+		if curTailChan != nil {
+			curTailChan <- true
+		}
+		terminate := make(chan bool)
+		curTailChan = terminate
+		go tailFile(file, terminate)
 	}
 
 	done := make(chan bool)
@@ -65,7 +70,12 @@ func tailLatestFile(dir string) {
 				if event.Op&fsnotify.Create == fsnotify.Create {
 					file := event.Name
 					if file != "" {
-						go tailFile(file)
+						if curTailChan != nil {
+							curTailChan <- true
+						}
+						terminate := make(chan bool)
+						curTailChan = terminate
+						go tailFile(file, terminate)
 					}
 				}
 			case err := <-watcher.Errors:
@@ -100,7 +110,7 @@ func getLatestFile(dir string) string {
 	return ""
 }
 
-func tailFile(file string) {
+func tailFile(file string, terminate chan bool) {
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
 
@@ -109,13 +119,17 @@ func tailFile(file string) {
 		log.Fatal(err)
 	}
 
-	if curTail != nil {
-		curTail.Cleanup()
-		curTail = t
-	}
-
+tailLoop:
 	for line := range t.Lines {
-		fmt.Println(line.Text)
+		select {
+		case term := <-terminate:
+			if term {
+				t.Cleanup()
+				break tailLoop
+			}
+		default:
+			fmt.Println(line.Text)
+		}
 	}
 }
 

@@ -116,8 +116,9 @@ func tailFile(file string, terminate chan bool) {
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
 	seekInfo := tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
+	isWin := os.PathListSeparator != '/'
 
-	t, err := tail.TailFile(file, tail.Config{Follow: true, Location: &seekInfo})
+	t, err := tail.TailFile(file, tail.Config{Poll: isWin, Follow: true, Location: &seekInfo})
 	if err != nil {
 		log.Fatal(err)
 	}

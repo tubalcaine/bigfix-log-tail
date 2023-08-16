@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,10 +18,14 @@ import (
 
 // A package level reference to the current
 // tail goroutine in order to close it on starting next one
-var curTailChan chan bool = nil
+var g_curTailChan chan bool = nil
+var g_usecDelay int = 150
 
 func main() {
 	logpath := ""
+
+	flag.IntVar(&g_usecDelay, "usec", 150, "Microsecond delay to wait for next line (default 150)")
+	flag.Parse()
 
 	if os.PathSeparator == '/' {
 		// This doesn't handle MacOS at all!
@@ -29,9 +34,12 @@ func main() {
 		logpath = "C:\\Program Files (x86)\\BigFix Enterprise\\BES Client\\__BESData\\__Global\\Logs"
 	}
 
-	args := os.Args
-	if len(args) == 2 {
+	args := flag.Args()
+	if len(args) == 1 {
 		logpath = args[1]
+	} else if len(args) > 1 {
+		fmt.Println("Cannot specifiy more than one path to watch.")
+		os.Exit(2)
 	}
 
 	_, err := os.Stat(logpath)
@@ -40,7 +48,7 @@ func main() {
 		fmt.Printf("Error opening directory [%s]. Does it exist?", logpath)
 	}
 
-	fmt.Println("Tailing current log in", logpath)
+	fmt.Println("Tailing current log in", logpath, " with ", g_usecDelay, " microsecond delay")
 	tailLatestFile(logpath)
 }
 
@@ -55,11 +63,11 @@ func tailLatestFile(dir string) {
 	// Get the latest file in directory and tail it initially
 	file := getLatestFile(dir)
 	if file != "" {
-		if curTailChan != nil {
-			curTailChan <- true
+		if g_curTailChan != nil {
+			g_curTailChan <- true
 		}
 		terminate := make(chan bool)
-		curTailChan = terminate
+		g_curTailChan = terminate
 		go tailFile(file, terminate)
 	}
 
@@ -72,11 +80,11 @@ func tailLatestFile(dir string) {
 				if event.Op&fsnotify.Create == fsnotify.Create {
 					file := event.Name
 					if file != "" {
-						if curTailChan != nil {
-							curTailChan <- true
+						if g_curTailChan != nil {
+							g_curTailChan <- true
 						}
 						terminate := make(chan bool)
-						curTailChan = terminate
+						g_curTailChan = terminate
 						go tailFile(file, terminate)
 					}
 				}

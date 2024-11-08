@@ -1,11 +1,13 @@
 package main
 
+// Package main provides a utility to tail and monitor log files in real-time.
+// It uses the fsnotify package to watch for changes in the log files and the
+// nxadm/tail package to read the log file contents.
 import (
 	"bufio"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -36,18 +38,21 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 1 {
-		logpath = args[1]
+		logpath = args[0]
 	} else if len(args) > 1 {
-		fmt.Println("Cannot specifiy more than one path to watch.")
+		log.Printf("Cannot specify more than one path to watch.")
+		os.Exit(1)
 		os.Exit(2)
 	}
 
 	_, err := os.Stat(logpath)
 
 	if err != nil {
-		fmt.Printf("Error opening directory [%s]. Does it exist?", logpath)
+		log.Printf("Error opening directory [%s]: %v. Does it exist?\n", logpath, err)
+		os.Exit(1)
 	}
 
+	log.Printf("Tailing current log in %s with %d microsecond delay", logpath, g_usecDelay)
 	fmt.Println("Tailing current log in", logpath, " with ", g_usecDelay, " microsecond delay")
 	tailLatestFile(logpath)
 }
@@ -55,7 +60,7 @@ func main() {
 func tailLatestFile(dir string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to create watcher: %v", err)
 	}
 
 	defer watcher.Close()
@@ -89,26 +94,35 @@ func tailLatestFile(dir string) {
 					}
 				}
 			case err := <-watcher.Errors:
-				log.Println("error:", err)
+				log.Printf("Watcher error: %v", err)
 			}
 		}
 	}()
 
 	err = watcher.Add(dir)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error adding watcher to directory: %v", err)
+		os.Exit(1)
 	}
 	<-done
 }
 
 func getLatestFile(dir string) string {
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].ModTime().After(files[j].ModTime())
+		infoI, err := files[i].Info()
+		if err != nil {
+			log.Fatal(err)
+		}
+		infoJ, err := files[j].Info()
+		if err != nil {
+			log.Fatal(err)
+		}
+		return infoI.ModTime().After(infoJ.ModTime())
 	})
 
 	for _, file := range files {
@@ -121,6 +135,7 @@ func getLatestFile(dir string) string {
 }
 
 func tailFile(file string, terminate chan bool) {
+	fmt.Printf("\nNow tailing %s\n", file)
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
 	seekInfo := tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
@@ -140,6 +155,11 @@ tLoop:
 				break tLoop
 			}
 		case line := <-t.Lines:
+			if line.Err != nil {
+				log.Printf("Error reading line: %v", line.Err)
+				continue
+			}
+			log.Printf("%s", line.Text)
 			fmt.Println(line.Text)
 		default:
 			// This is just here to keep this from eating too much CPU
@@ -165,12 +185,12 @@ func printLastNLines(file string, n int) {
 			lines = lines[1:]
 		}
 	}
-
-	if scanner.Err() != nil {
-		log.Fatal(scanner.Err())
+	for _, line := range lines {
+		log.Printf("%s", line)
+		fmt.Println(line)
 	}
 
-	for _, line := range lines {
-		fmt.Println(line)
+	if err := scanner.Err(); err != nil {
+		log.Fatalf("Scanner error: %v", err)
 	}
 }

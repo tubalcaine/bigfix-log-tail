@@ -181,9 +181,6 @@ tLoop:
 			}
 			log.Printf("%s", line.Text)
 			fmt.Println(line.Text)
-		default:
-			// This is just here to keep this from eating too much CPU
-			time.Sleep(75 * time.Microsecond)
 		}
 	}
 }

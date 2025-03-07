@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/nxadm/tail"
@@ -67,7 +66,7 @@ func tailLatestFile(dir string) {
 
 	// Track the currently tailed file
 	var currentFile string
-	
+
 	// Get the latest file in directory and tail it initially
 	currentFile = getLatestFile(dir)
 	if currentFile != "" {
@@ -88,15 +87,15 @@ func tailLatestFile(dir string) {
 				if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Chmod) != 0 {
 					// Get the latest file after this event
 					latestFile := getLatestFile(dir)
-					
+
 					// Only switch if we found a file and it's different from the current one
 					if latestFile != "" && latestFile != currentFile {
 						log.Printf("Detected newer log file: %s", latestFile)
-						
+
 						if g_curTailChan != nil {
 							g_curTailChan <- true
 						}
-						
+
 						terminate := make(chan bool)
 						g_curTailChan = terminate
 						currentFile = latestFile

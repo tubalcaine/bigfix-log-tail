@@ -146,15 +146,25 @@ func tailFile(file string, terminate chan bool) {
 		log.Fatal(err)
 	}
 
+	// Make sure we properly clean up when this function exits
+	defer func() {
+		t.Stop()
+		t.Cleanup()
+		log.Printf("Stopped tailing %s", file)
+	}()
+
 tLoop:
 	for {
 		select {
 		case term := <-terminate:
 			if term {
-				t.Cleanup()
 				break tLoop
 			}
-		case line := <-t.Lines:
+		case line, ok := <-t.Lines:
+			if !ok {
+				// Channel closed
+				break tLoop
+			}
 			if line.Err != nil {
 				log.Printf("Error reading line: %v", line.Err)
 				continue

@@ -5,27 +5,31 @@ package main
 // nxadm/tail package to read the log file contents.
 import (
 	"bufio"
+	"context"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
+	"syscall"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/nxadm/tail"
 )
 
-// A package level reference to the current
-// tail goroutine in order to close it on starting next one
-var g_curTailChan chan bool = nil
-var g_usecDelay int = 150
+// LogTailer manages the state for tailing log files
+type LogTailer struct {
+	microsecDelay int
+	cancelFunc    context.CancelFunc
+}
 
 func main() {
 	logpath := ""
+	tailer := &LogTailer{}
 
-	flag.IntVar(&g_usecDelay, "usec", 150, "Microsecond delay to wait for next line (default 150)")
+	flag.IntVar(&tailer.microsecDelay, "usec", 150, "Microsecond delay to wait for next line (default 150)")
 	flag.Parse()
 
 	if os.PathSeparator == '/' {
@@ -41,7 +45,6 @@ func main() {
 	} else if len(args) > 1 {
 		log.Printf("Cannot specify more than one path to watch.")
 		os.Exit(1)
-		os.Exit(2)
 	}
 
 	_, err := os.Stat(logpath)
@@ -51,12 +54,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("Tailing current log in %s with %d microsecond delay", logpath, g_usecDelay)
-	fmt.Println("Tailing current log in", logpath, " with ", g_usecDelay, " microsecond delay")
-	tailLatestFile(logpath)
+	log.Printf("Tailing current log in %s with %d microsecond delay", logpath, tailer.microsecDelay)
+
+	// Create a root context that can be canceled on signals
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		log.Printf("Received signal %v, shutting down gracefully...", sig)
+		cancel() // Cancel the root context
+	}()
+
+	tailer.tailLatestFile(ctx, logpath)
 }
 
-func tailLatestFile(dir string) {
+func (lt *LogTailer) tailLatestFile(ctx context.Context, dir string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatalf("Failed to create watcher: %v", err)
@@ -70,18 +87,27 @@ func tailLatestFile(dir string) {
 	// Get the latest file in directory and tail it initially
 	currentFile = getLatestFile(dir)
 	if currentFile != "" {
-		if g_curTailChan != nil {
-			g_curTailChan <- true
+		// Cancel previous tail if exists
+		if lt.cancelFunc != nil {
+			lt.cancelFunc()
 		}
-		terminate := make(chan bool)
-		g_curTailChan = terminate
-		go tailFile(currentFile, terminate)
+		childCtx, cancel := context.WithCancel(ctx)
+		lt.cancelFunc = cancel
+		go tailFile(currentFile, childCtx)
 	}
 
-	done := make(chan bool)
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for {
 			select {
+			case <-ctx.Done():
+				// Parent context canceled (signal received)
+				log.Printf("Context canceled, stopping file watcher")
+				if lt.cancelFunc != nil {
+					lt.cancelFunc()
+				}
+				return
 			case event := <-watcher.Events:
 				// Check for any event that might indicate a new file or modified file
 				if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Chmod) != 0 {
@@ -92,14 +118,15 @@ func tailLatestFile(dir string) {
 					if latestFile != "" && latestFile != currentFile {
 						log.Printf("Detected newer log file: %s", latestFile)
 
-						if g_curTailChan != nil {
-							g_curTailChan <- true
+						// Cancel previous tail
+						if lt.cancelFunc != nil {
+							lt.cancelFunc()
 						}
 
-						terminate := make(chan bool)
-						g_curTailChan = terminate
+						childCtx, cancel := context.WithCancel(ctx)
+						lt.cancelFunc = cancel
 						currentFile = latestFile
-						go tailFile(currentFile, terminate)
+						go tailFile(currentFile, childCtx)
 					}
 				}
 			case err := <-watcher.Errors:
@@ -143,8 +170,8 @@ func getLatestFile(dir string) string {
 	return ""
 }
 
-func tailFile(file string, terminate chan bool) {
-	fmt.Printf("\nNow tailing %s\n", file)
+func tailFile(file string, ctx context.Context) {
+	log.Printf("Now tailing %s", file)
 	// Print the last 10 lines before tailing
 	printLastNLines(file, 10)
 	seekInfo := tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}
@@ -162,24 +189,20 @@ func tailFile(file string, terminate chan bool) {
 		log.Printf("Stopped tailing %s", file)
 	}()
 
-tLoop:
 	for {
 		select {
-		case term := <-terminate:
-			if term {
-				break tLoop
-			}
+		case <-ctx.Done():
+			return
 		case line, ok := <-t.Lines:
 			if !ok {
 				// Channel closed
-				break tLoop
+				return
 			}
 			if line.Err != nil {
 				log.Printf("Error reading line: %v", line.Err)
 				continue
 			}
 			log.Printf("%s", line.Text)
-			fmt.Println(line.Text)
 		}
 	}
 }
@@ -203,7 +226,6 @@ func printLastNLines(file string, n int) {
 	}
 	for _, line := range lines {
 		log.Printf("%s", line)
-		fmt.Println(line)
 	}
 
 	if err := scanner.Err(); err != nil {

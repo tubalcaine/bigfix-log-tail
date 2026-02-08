@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"syscall"
 
@@ -32,11 +33,15 @@ func main() {
 	flag.IntVar(&tailer.microsecDelay, "usec", 150, "Microsecond delay to wait for next line (default 150)")
 	flag.Parse()
 
-	if os.PathSeparator == '/' {
-		// This doesn't handle MacOS at all!
+	switch runtime.GOOS {
+	case "darwin":
+		logpath = "/Library/Application Support/BigFix/BES Agent/__BESData/__Global/Logs"
+	case "linux":
 		logpath = "/var/opt/BESClient/__BESData/__Global/Logs"
-	} else {
+	case "windows":
 		logpath = "C:\\Program Files (x86)\\BigFix Enterprise\\BES Client\\__BESData\\__Global\\Logs"
+	default:
+		logpath = "/var/opt/BESClient/__BESData/__Global/Logs"
 	}
 
 	args := flag.Args()
